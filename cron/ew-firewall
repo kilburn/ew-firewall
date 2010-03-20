@@ -1,0 +1,4 @@
+# /etc/cron.d/ew-firewall: crontab fragment to generate ew-firewall block notifications
+
+# Scan for blocked connections every 5 minutes
+*/5 *     * * *     root   /etc/init.d/ew-firewall blocked

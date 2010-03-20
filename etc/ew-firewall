@@ -1,0 +1,14 @@
+# ew-firewall configuration options
+
+# Uncomment this option to allow firewall starting
+START=0
+
+# Uncomment this option to really block connections
+# (otherwise they will be logged as blocked but let through)
+BLOCK=0
+
+# Iptables binary path
+IPTABLES=/sbin/iptables
+
+# Easy Web Firewall php binary path
+EWF=/usr/local/sbin/ew-firewall

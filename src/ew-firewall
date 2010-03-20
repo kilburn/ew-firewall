@@ -1,0 +1,70 @@
+#!/usr/bin/php
+<?php
+global $syslog, $dir;
+$syslog = "/var/log/syslog";
+$dir = "/etc/ew-firewall";
+
+function showBlocked() {
+	global $syslog, $dir;
+
+	$cbytes = filesize($syslog);
+	$lbytes = (int)file_get_contents("$dir/bytes");
+	$lines = '';
+	if ($cbytes < $lbytes) {
+		// Logfile has been rotated
+		$lines = shell_exec('tail --bytes ' . (filesize("$syslog.0")-$lbytes) . ' ' . $syslog . '.0 | grep ewf-drop');
+	}
+	$lines .= shell_exec('tail --bytes ' . ($cbytes-$lbytes) . ' ' . $syslog . ' | grep ewf-drop');
+	$lines = explode("\n", $lines);
+
+	foreach($lines as $line) {
+		if (empty($line)) continue;
+		$f = preg_split('/[\s]+/', $line);
+		$date = $f[0] . ' ' . $f[1] . ' ' . $f[2];
+		$dest = explode('=', $f[8]); $dest = $dest[1];
+		$port = explode('=', $f[17]); $port = $port[1];
+		$uuid = explode('=', $f[22]); $uuid = $uuid[1];
+		$uinfo = posix_getpwuid($uuid);
+		$uname = explode('/', $uinfo['dir']); $uname = $uname[count($uname)-1];
+
+		echo "$date Blocked $uname ($uuid) -> $dest:$port\n";
+	}
+
+	file_put_contents("$dir/bytes", $cbytes);
+}
+
+function loadRules() {
+	global $dir;
+
+	$lines = file("$dir/output-whitelist");
+	foreach($lines as $line) {
+		$line = trim($line);
+		if (empty($line) || $line[0] == "#") continue;
+
+		$rule = '${IPTABLES} -A EW_OUTPUT -p tcp ';
+		$fields = preg_split('/[\s]+/', $line);
+		if ($fields[0] != '*') $rule .= '-m owner --uid-owner ' . $fields[0] . ' ';
+		if ($fields[1] != '*') $rule .= '-d ' . $fields[1] . ' ';
+		if ($fields[2] != '*') $rule .= '--dport ' . $fields[2] . ' ';
+		echo $rule . "-j RETURN\n";
+	}
+}
+
+function showUsage() {
+	echo "Usage: ew-firewall (rules|blocked)\n";
+}
+
+if ($argc < 2) {
+	showUsage();
+}
+switch ($argv[1]) {
+	case 'rules':
+		loadRules();
+		break;
+	case 'blocked':
+		showBlocked();
+		break;
+	default:
+		showUsage();
+		break;
+}

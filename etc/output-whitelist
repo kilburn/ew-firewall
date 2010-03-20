@@ -1,0 +1,24 @@
+# Easy Web Firewall rules definition file.
+#
+# This rules definition file is designed to be as easy as possible. Lines starting
+# with a dash (`#`) are ignored, whereas each other line defines a rule using the
+# following format (fields are separated by any number of spaces or tabs):
+#
+#    UID         Destination             Port
+#
+# Where:
+#
+# - `UID` is the UID or range of UIDs of the matching users, while an asterisk
+#   (`*`) matches any user.
+#   Examples: `1000`, `1000-200`, `*`.
+#
+# - `Destination` is an IP address or CIDR block matching the connection's
+#   destination IP, while an asterisk (`*`) matches any destination IP.
+#   Examples: 127.0.0.1/8, 1.2.3.4, *.
+#
+# - `Port` is the port or port range of the connection, while an asterisk `(*`)
+#   matches any port.
+#   Examples: 80, 8000-8005, *.
+
+# Local connections
+*	127.0.0.1/8		*
