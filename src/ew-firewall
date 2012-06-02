@@ -140,10 +140,10 @@ function getUnprocessedLines($logfile, $bytesdir) {
         return array();
     }
     $lines .= fread_until($logfile, $last_bytes, $total_bytes);
-    
+
     # Compute and update the last read byte offset
     file_put_contents($bytesfile, $total_bytes);
-    
+
     $lines = explode("\n", trim($lines));
     return $lines;
 }
@@ -173,10 +173,14 @@ function showBlocked() {
 
 function processTpLine($line) {
     debug("Processing tinyproxy line: $line");
-    $f = preg_split('/[\s]+/', $line);
+    $f = preg_split('/[\s]+/', $line, 4);
     $date = $f[0] . ' ' . $f[1] . ' ' . $f[2];
-    $url = $f[10];
-    return array('type' => 'tp', 'time' => strtotime($date), 'url' => $url);
+    if (preg_match('/Proxying refused on filtered url "(\S+)"/', $f[3], $matches)) {
+        return array('type' => 'tp', 'time' => strtotime($date), 'url' => $matches[1]);
+    } else if (preg_match('/error "\S+"/', $f[3], $matches)) {
+        return array('type' => 'tp', 'time' => strtotime($date), 'url' => $matches[0]);
+    }
+    return array('type' => 'none', 'time' => 0);
 }
 
 function printBlocks($drops, $logs) {
