@@ -1,10 +1,12 @@
 #!/usr/bin/php
 <?php
+require_once 'Console/Getopt.php';
+
 global $syslog, $confdir, $debug;
 $syslog = "/var/log/syslog";
 $confdir = "/etc/ew-firewall";
 
-$argv = parse_arguments($argv);
+$arguments = parse_arguments();
 debug_dump_configuration();
 
 function debug_dump_configuration() {
@@ -18,33 +20,33 @@ function perror($message) {
 }
 
 function showUsage() {
-    echo "Usage: ew-firewall [options] <rules|blocked>\n";
+    perror("Usage: ew-firewall [options] <rules|blocked>");
+    exit(1);
 }
 
 // Configuration checks
-if (count($argv) < 2) {
+if (count($arguments) != 1) {
     showUsage();
-    die();
 }
 if (!file_exists($syslog)) {
     perror("Error: syslog file '$syslog' does not exist");
-    die();
+    exit(1);
 }
 if (!is_readable($syslog)) {
     perror("Error: permission denied while reading '$syslog'");
-    die();
+    exit(1);
 }
 if (!is_dir($confdir)) {
     perror("Error: '$confdir' does not exist or is not a directory");
-    die();
+    exit(1);
 }
 if (!is_readable($confdir)) {
     perror("Error: permission denied while reading '$confdir'");
-    die();
+    exit(1);
 }
 
-debug("Arguments: " . implode(' ', $argv));
-switch ($argv[1]) {
+debug("Arguments: " . implode(' ', $arguments));
+switch ($arguments[0]) {
     case 'rules':
         loadRules();
         break;
@@ -62,18 +64,31 @@ function debug($message) {
     perror($message);
 }
 
-function parse_arguments($argv) {
+function parse_arguments() {
     global $syslog, $confdir, $debug;
 
-    $shortopts = "c:ds:";
+    $cg = new Console_Getopt();
+    $args = $cg->readPHPArgv();
+    array_shift($args);
+
+    $shortopts = "c:dhs:";
     $longopts  = array(
         "conf-dir:",      // Configuration directory
-        "debug",    // Flag to dump configuration and exit
+        "debug",          // Enable debugging
+        "help",           // Show help/usage
         "syslog:",        // Syslog path
     );
-    $options = getopt($shortopts, $longopts);
+    $result = $cg->getopt2($args, $shortopts, $longopts);
+    if (PEAR::isError($result)) {
+        perror("Error: " . $result->getMessage());
+        exit(1);
+    }
+    list($result, $arguments) = $result;
+    $options = array();
+    foreach($result as $value) {
+        $options[$value[0]] = $value[1];
+    }
 
-    $pruneargv = array();
     foreach($options as $option=>$value) {
         switch($option) {
             case 'c':
@@ -89,26 +104,16 @@ function parse_arguments($argv) {
             case 'h':
             case 'help':
                 showUsage();
-                break;
+                exit(1);
 
             case 's':
             case 'syslog':
                 $syslog = $value;
         }
-
-        // Store the chunks to be removed from argv
-        foreach ($argv as $key => $chunk) {
-            $regex = '/^'. (isset($option[1]) ? '--' : '-') . $option . '/';
-            if ($chunk == $value && $argv[$key-1][0] == '-' || preg_match($regex, $chunk)) {
-                array_push($pruneargv, $key);
-            }
-        }
-
     }
 
     // Cleanup argv from the already-processed options
-    while ($key = array_pop($pruneargv)) unset($argv[$key]);
-    return array_values($argv);
+    return $arguments;
 }
 
 

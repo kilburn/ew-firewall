@@ -59,6 +59,8 @@ Requirements
  * `iptables`, including support for the `owner` module.
  * `bash` shell (it might work with dash or sh, but it's not tested).
  * php-cli, the command line version of the php interpreter.
+ * `PEAR Console_Getopt`, to parse command line arguments (it should already be
+   installed in your system, because it is part of the base PEAR installation).
  * (optional) `tinyproxy`, with the configuration detailed below.
 
 Installation
