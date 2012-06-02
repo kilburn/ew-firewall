@@ -74,6 +74,9 @@ add_rules() {
 	${IPTABLES} -A EW_OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 	${IPTABLES} -A EW_INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 
+	# Log connections to local proxy
+	${IPTABLES} -A EW_OUTPUT -p tcp -d 127.0.0.1/8 --dport 8888 -j ew-log
+
 	# Load the whitelist rules
 	$EWF rules | while read line
 	do

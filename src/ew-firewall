@@ -1,70 +1,242 @@
 #!/usr/bin/php
 <?php
-global $syslog, $dir;
+global $syslog, $confdir, $debug;
 $syslog = "/var/log/syslog";
-$dir = "/etc/ew-firewall";
+$confdir = "/etc/ew-firewall";
 
-function showBlocked() {
-	global $syslog, $dir;
+$argv = parse_arguments($argv);
+debug_dump_configuration();
 
-	$cbytes = filesize($syslog);
-	$lbytes = (int)file_get_contents("$dir/bytes");
-	$lines = '';
-	if ($cbytes < $lbytes) {
-		// Logfile has been rotated
-		$lines = shell_exec('tail --bytes ' . (filesize("$syslog.0")-$lbytes) . ' ' . $syslog . '.0 | grep ewf-drop');
-	}
-	$lines .= shell_exec('tail --bytes ' . ($cbytes-$lbytes) . ' ' . $syslog . ' | grep ewf-drop');
-	$lines = explode("\n", $lines);
-
-	foreach($lines as $line) {
-		if (empty($line)) continue;
-		$f = preg_split('/[\s]+/', $line);
-		$date = $f[0] . ' ' . $f[1] . ' ' . $f[2];
-		$dest = explode('=', $f[8]); $dest = $dest[1];
-		$port = explode('=', $f[17]); $port = $port[1];
-		$uuid = explode('=', $f[22]); $uuid = $uuid[1];
-		$uinfo = posix_getpwuid($uuid);
-		$uname = explode('/', $uinfo['dir']); $uname = $uname[count($uname)-1];
-
-		echo "$date Blocked $uname ($uuid) -> $dest:$port\n";
-	}
-
-	file_put_contents("$dir/bytes", $cbytes);
+function debug_dump_configuration() {
+    global $syslog, $confdir;
+    debug("Syslog path: $syslog");
+    debug("Configuration directory: $confdir");
 }
 
-function loadRules() {
-	global $dir;
-
-	$lines = file("$dir/output-whitelist");
-	foreach($lines as $line) {
-		$line = trim($line);
-		if (empty($line) || $line[0] == "#") continue;
-
-		$rule = '${IPTABLES} -A EW_OUTPUT -p tcp ';
-		$fields = preg_split('/[\s]+/', $line);
-		if ($fields[0] != '*') $rule .= '-m owner --uid-owner ' . $fields[0] . ' ';
-		if ($fields[1] != '*') $rule .= '-d ' . $fields[1] . ' ';
-		if ($fields[2] != '*') $rule .= '--dport ' . $fields[2] . ' ';
-		echo $rule . "-j RETURN\n";
-	}
+function perror($message) {
+    file_put_contents('php://stderr', $message . "\n");
 }
 
 function showUsage() {
-	echo "Usage: ew-firewall (rules|blocked)\n";
+    echo "Usage: ew-firewall [options] <rules|blocked>\n";
 }
 
-if ($argc < 2) {
-	showUsage();
+// Configuration checks
+if (count($argv) < 2) {
+    showUsage();
+    die();
 }
+if (!file_exists($syslog)) {
+    perror("Error: syslog file '$syslog' does not exist");
+    die();
+}
+if (!is_readable($syslog)) {
+    perror("Error: permission denied while reading '$syslog'");
+    die();
+}
+if (!is_dir($confdir)) {
+    perror("Error: '$confdir' does not exist or is not a directory");
+    die();
+}
+if (!is_readable($confdir)) {
+    perror("Error: permission denied while reading '$confdir'");
+    die();
+}
+
+debug("Arguments: " . implode(' ', $argv));
 switch ($argv[1]) {
-	case 'rules':
-		loadRules();
-		break;
-	case 'blocked':
-		showBlocked();
-		break;
-	default:
-		showUsage();
-		break;
+    case 'rules':
+        loadRules();
+        break;
+    case 'blocked':
+        showBlocked();
+        break;
+    default:
+        showUsage();
+        break;
 }
+
+function debug($message) {
+    global $debug;
+    if (!$debug) return;
+    perror($message);
+}
+
+function parse_arguments($argv) {
+    global $syslog, $confdir, $debug;
+
+    $shortopts = "c:ds:";
+    $longopts  = array(
+        "conf-dir:",      // Configuration directory
+        "debug",    // Flag to dump configuration and exit
+        "syslog:",        // Syslog path
+    );
+    $options = getopt($shortopts, $longopts);
+
+    $pruneargv = array();
+    foreach($options as $option=>$value) {
+        switch($option) {
+            case 'c':
+            case 'conf-dir':
+                $confdir = $value;
+                break;
+
+            case 'd':
+            case 'debug':
+                $debug = true;
+                break;
+
+            case 'h':
+            case 'help':
+                showUsage();
+                break;
+
+            case 's':
+            case 'syslog':
+                $syslog = $value;
+        }
+
+        // Store the chunks to be removed from argv
+        foreach ($argv as $key => $chunk) {
+            $regex = '/^'. (isset($option[1]) ? '--' : '-') . $option . '/';
+            if ($chunk == $value && $argv[$key-1][0] == '-' || preg_match($regex, $chunk)) {
+                array_push($pruneargv, $key);
+            }
+        }
+
+    }
+
+    // Cleanup argv from the already-processed options
+    while ($key = array_pop($pruneargv)) unset($argv[$key]);
+    return array_values($argv);
+}
+
+
+function fread_until($file, $offset, $limit) {
+    #echo "Reading $file from $offset until $limit\n";
+    $fh = fopen($file, 'r');
+    fseek($fh, $offset);
+    $buf = fread($fh, $limit);
+    fclose($fh);
+    return $buf;
+}
+
+function getUnprocessedLines($logfile, $bytesdir) {
+    $bytesfile = $bytesdir . '/' . basename($logfile) . '.bytes';
+
+    $total_bytes = filesize($logfile);
+    $last_bytes = (int)@file_get_contents($bytesfile);
+    $lines = '';
+    if ($total_bytes < $last_bytes) {
+        // Logfile has been rotated, so we have to read the remainder from the old file
+        $lines = fread_until("$logfile.0", $last_bytes, filesize("$logfile.0"));
+        $last_bytes = 0;
+    } elseif ($total_bytes == $last_bytes) {
+        return array();
+    }
+    $lines .= fread_until($logfile, $last_bytes, $total_bytes);
+    
+    # Compute and update the last read byte offset
+    file_put_contents($bytesfile, $total_bytes);
+    
+    $lines = explode("\n", trim($lines));
+    return $lines;
+}
+
+function showBlocked() {
+    global $syslog, $confdir;
+
+    $drops = array(); $logs = array();
+    $lines = getUnprocessedLines($syslog, $confdir);
+    foreach($lines as $line) {
+        if (strstr($line, 'ewf-drop')) {
+            $drop = processEwfLine($line);
+            $drops[$drop['time']] = $drop;
+        } elseif (strstr($line, 'ewf-log')) {
+            $log = processEwfLine($line);
+            $logs[$log['time']] = $log;
+        } elseif (strstr($line, 'tinyproxy')) {
+            $drop = processTpLine($line);
+            $drops[$drop['time']] = $drop;
+        }
+    }
+
+    ksort($drops);
+    printBlocks($drops, $logs);
+}
+
+
+function processTpLine($line) {
+    debug("Processing tinyproxy line: $line");
+    $f = preg_split('/[\s]+/', $line);
+    $date = $f[0] . ' ' . $f[1] . ' ' . $f[2];
+    $url = $f[10];
+    return array('type' => 'tp', 'time' => strtotime($date), 'url' => $url);
+}
+
+function printBlocks($drops, $logs) {
+    foreach($drops as $drop) {
+        switch ($drop['type']) {
+            case 'tp':
+                printTpDrop($drop, $logs);
+                break;
+            case 'ewf':
+                printEwfDrop($drop, $logs);
+                break;
+        }
+    }
+}
+
+function printEwfDrop($drop, $logs) {
+    echo strftime('%c', $drop['time'])
+       . ' [D] blocked ' . $drop['uname']
+       . ' (' . $drop['uuid'] . ') -> ' . $drop['dest'] . ':' . $drop['port'] . "\n";
+}
+function printTpDrop($reject, $logs) {
+    if (isset($logs[$reject['time']])) {
+        $drop = $logs[$reject['time']];
+        echo strftime('%c', $drop['time'])
+           . ' [P] blocked ' . $drop['uname']
+           . ' (' . $drop['uuid'] . ') -> ' . $reject['url'] . "\n";
+    } else {
+        echo strftime('%c', $reject['time'])
+           . ' Proxy blocked unknown () -> ' . $reject['url'] . "\n";
+    }
+}
+
+function processEwfLine($line) {
+    $f = preg_split('/[\s]+/', $line, 4);
+    $date = $f[0] . ' ' . $f[1] . ' ' . $f[2];
+    preg_match('/DST=([^\s]+)/', $line, $matches);
+    $dest = $matches[1];
+    preg_match('/DPT=([^\s]+)/', $line, $matches);
+    $port = $matches[1];
+    preg_match('/UID=([^\s]+)/', $line, $matches);
+    $uuid = $matches[1];
+    $uinfo = posix_getpwuid($uuid);
+    $uname = explode('/', $uinfo['dir']); $uname = $uname[count($uname)-1];
+
+    return array(
+        'type' => 'ewf', 'time' => strtotime($date), 'uname' => $uname, 'uuid' => $uuid, 'dest' => $dest, 'port' => $port
+    );
+}
+
+function loadRules() {
+    global $confdir;
+
+    $lines = file("$confdir/rules");
+    foreach($lines as $line) {
+        $line = trim($line);
+        if (empty($line) || $line[0] == "#") continue;
+
+        $rule = '${IPTABLES} -A EW_OUTPUT -p tcp ';
+        $fields = preg_split('/[\s]+/', $line);
+        if ($fields[1] != '*') $rule .= '-m owner --uid-owner ' . $fields[1] . ' ';
+        if ($fields[2] != '*') $rule .= '-d ' . $fields[2] . ' ';
+        if ($fields[3] != '*') $rule .= '--dport ' . $fields[3] . ' ';
+        if ($fields[0] == 'I') $rule .= '-j REJECT';
+        if ($fields[0] == 'A') $rule .= '-j RETURN';
+        echo $rule . "\n";
+    }
+}
+

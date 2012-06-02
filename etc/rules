@@ -4,9 +4,13 @@
 # with a dash (`#`) are ignored, whereas each other line defines a rule using the
 # following format (fields are separated by any number of spaces or tabs):
 #
-#    UID         Destination             Port
+#    Action  UID         Destination             Port
 #
 # Where:
+#
+# - 'Action' is the action to take on connections matching this rule, being one of:
+#       A : Allow the connection to go through.
+#       I : Block this connection without logging (ignore).
 #
 # - `UID` is the UID or range of UIDs of the matching users, while an asterisk
 #   (`*`) matches any user.
@@ -21,4 +25,4 @@
 #   Examples: 80, 8000-8005, *.
 
 # Local connections
-*	127.0.0.1/8		*
+A *		127.0.0.1/8		*
