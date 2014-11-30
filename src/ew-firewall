@@ -51,6 +51,7 @@ switch ($arguments[0]) {
         loadRules();
         break;
     case 'blocked':
+        import_ignore_file();
         showBlocked();
         break;
     default:
@@ -202,15 +203,16 @@ function printEwfDrop($drop, $logs) {
        . ' (' . $drop['uuid'] . ') -> ' . $drop['dest'] . ':' . $drop['port'] . "\n";
 }
 function printTpDrop($reject, $logs) {
-    if (isset($logs[$reject['time']])) {
-        $drop = $logs[$reject['time']];
-        echo strftime('%c', $drop['time'])
-           . ' [P] blocked ' . $drop['uname']
-           . ' (' . $drop['uuid'] . ') -> ' . $reject['url'] . "\n";
-    } else {
+    if (!isset($logs[$reject['time']])) {
         echo strftime('%c', $reject['time'])
            . ' Proxy blocked unknown () -> ' . $reject['url'] . "\n";
+        return;
     }
+
+    $drop = $logs[$reject['time']];
+    echo strftime('%c', $drop['time'])
+       . ' [P] blocked ' . $drop['uname']
+       . ' (' . $drop['uuid'] . ') -> ' . $reject['url'] . "\n";
 }
 
 function processEwfLine($line) {

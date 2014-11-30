@@ -1,0 +1,35 @@
+# Easy Web Firewall tinyproxy ignore file.
+#
+# This ignore file defines (per user) URLs that should be ignored by the proxy
+# reporter. User/URL combinations defined here will never be reported to the admin
+# when such connections are blocked. This is useful to ignore spammy software that
+# tries to fetch many external URLs.
+#
+# This file's format is straightforward. Lines starting with a 
+# dash (`#`) are ignored, whereas each other line defines a rule using the
+# following format (fields are separated by any number of spaces or tabs):
+#
+#    UID         Destination
+#
+# Where:
+#
+# - `UID` is the UID or range of UIDs of the matching users, while an asterisk
+#   (`*`) matches any user.
+#   Examples: `1000`, `1000-200`, `*`.
+#
+# - `Destination` is a regular expression. If the inspected URL matches the regex,
+#   the software will *not* report it (and matching stops). Otherwise the next rule
+#   is tested. If no rule matches, the URL will be reported by email to the sysadmin.
+#   Examples: `^api.wordpress.com:443`, `http://google.es/`
+#
+
+# Example entries:
+# Ignore blocked connections from user 1234
+# 1234		.
+# Ignore blocked non-secure connections from any local user to paypal
+# *			^http://(www.)?paypal.com/
+# Ignore blocked secure connections from any local user to twitter and its subdomains
+# *			^[^/]*twitter.com:443
+
+
+

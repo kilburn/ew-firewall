@@ -12,12 +12,19 @@ either:
 Since this actions do not directly prevent the server from operating normally,
 sysadmins do not usually notice that their server is infected until other
 servers start taking counter-measures against it. This is, their e-mails begin
-being rejected as comming from a spam source or their connections get blocked as
+being rejected as comming from a spam source or their connections get blocked by
 vulnerability scanners.
 
-Easy Web Firewall prevents these issues by easily allowing the system
-administrator to maintain a whitelist of allowed outgoing connections, using two
-different mechanisms:
+Easy Web Firewall prevents these issues by:
+
+1. Enabling the system administrator to maintain a whitelist of allowed outgoing 
+   connections.
+2. Optionally notifying the administrator when unauthorized connections are
+   blocked by the firewall.
+
+== Whitelisting connections ==
+
+Outgoing connections can be whitelisted through two complementary mechanisms:
 
 First, EWF allows iptables blocking based on
 combinations of user, destination, and port. Hence, it blocks everything that is
